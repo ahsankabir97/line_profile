@@ -342,7 +342,7 @@
 
     <div class="container">
         <div class="card">
-            <h2><span role="img" aria-label="settings"⚙️</span> INPUTS</h2>
+            <h2><span role="img" aria-label="settings">⚙️</span> INPUTS</h2>
             <div class="form-group">
                 <label for="oltName">OLT Name</label>
                 <select id="oltName">
@@ -391,8 +391,10 @@
 <script>
     function generateScript() {
         const olt = document.getElementById("oltName").value;
+        // Use default '10' for profileId if empty
         const profileId = document.getElementById("profileId").value.trim() || "10";
-        const gemMap = document.getElementById("gemMap").value.trim() || "1";
+        // Ensure gemMap is a number and within 1-8, defaulting to 1
+        const gemMap = Math.min(Math.max(parseInt(document.getElementById("gemMap").value.trim() || "1"), 1), 8);
         
         // Collect all potential VLAN inputs in order
         const vlanInputs = [
@@ -402,13 +404,13 @@
             document.getElementById("vlan4").value.trim()
         ];
         
-        // Filter out empty VLAN values to get a list of active VLANs
+        // Filter out empty VLAN values to get a list of active VLANs for V-SOL
         const vlans = vlanInputs.filter(v => v !== '');
 
         let script = "";
 
         if (olt === "vsol") {
-            // V-SOL logic (maps each active VLAN individually)
+            // V-SOL logic
             const vlanString = vlans.join(",");
             let servicePorts = '';
             vlans.forEach((v, i) => {
@@ -417,25 +419,20 @@
             script = `profile line id ${profileId}\ntcont 1 name tcont_1 dba MAX_BW\ngemport 1 tcont 1\nservice 1 gemport 1 vlan ${vlanString}\n${servicePorts}commit\nexit`;
         
         } else if (olt === "cdata16" || olt === "cdata8") {
-            // CDATA Logic: Use each entered VLAN sequentially for ports 1, 2, 3, 4
+            // CDATA Logic: Uses only VLAN 1, and Gem Map for the port number
             
+            const primaryVlan = vlanInputs[0];
             let gemMappings = '';
             
-            // Iterate over the list of ALL four inputs (vlanInputs)
-            vlanInputs.forEach((vlan, index) => {
-                const portIndex = index + 1; // Port starts at 1
-                
-                // Only generate a mapping line if a VLAN was entered for that slot
-                if (vlan !== '') {
-                    // This generates: gem mapping 1 [1, 2, 3, 4] vlan [VLAN ID]
-                    gemMappings += `gem mapping 1 ${portIndex} vlan ${vlan}\n`;
-                }
-            });
+            if (primaryVlan) {
+                // gem mapping 1 [Gem Map] vlan [VLAN 1]
+                gemMappings = `gem mapping 1 ${gemMap} vlan ${primaryVlan}\n`;
+            }
 
-            // Construct the full script
+            // Construct the full script with the requested profile format
             const profileCommand = (olt === "cdata16") ? 
-                `ont-lineprofile gpon profile-id ${profileId}` : 
-                `ont-lineprofile profile-id ${profileId}`;
+                `ont-lineprofile gpon profile-id ${profileId}` : // Requested format for 16-PON
+                `ont-lineprofile profile-id ${profileId}`;      // Existing format for 8-PON
                 
             script = `${profileCommand}\ntcont 1 dba-profile-id 30\ngem add 1 tcont 1\n${gemMappings}mapping-mode vlan\ncommit\nexit`;
         }
